@@ -1,0 +1,63 @@
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "27020:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - app-network
+    healthcheck:
+      test: mongosh -u "$$MONGO_INITDB_ROOT_USERNAME" -p "$$MONGO_INITDB_ROOT_PASSWORD" --quiet --eval "db.adminCommand('ping')"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      # Dentro da rede do compose o Mongo é acessado pelo nome do serviço,
+      # então isto sobrepõe qualquer MONGODB_URI apontando para localhost.
+      MONGODB_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/despesas?authSource=admin
+    ports:
+      - "3000:3000"
+    networks:
+      - app-network
+
+  # Chama /api/notify uma vez por dia, às 12h (horário do container).
+  # Ajuste ofelia.job-run.notify.schedule para mudar o horário
+  # (formato: "segundo minuto hora dia mês dia-da-semana", ou "@daily", "@every 1h" etc).
+  cron:
+    image: mcuadros/ofelia:latest
+    restart: unless-stopped
+    depends_on:
+      - app
+    command: daemon --docker
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    env_file:
+      - .env
+    networks:
+      - app-network
+    labels:
+      ofelia.job-run.notify.schedule: "0 0 12 * * *"
+      ofelia.job-run.notify.image: curlimages/curl:latest
+      ofelia.job-run.notify.network: app-network
+      ofelia.job-run.notify.command: >-
+        sh -c 'curl -fsS "http://app:3000/api/notify?token=$${CRON_SECRET}"'
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  mongo_data:
