@@ -1,69 +1,42 @@
-import { NextRequest, NextResponse } from "next/server";
-import { connectToDatabase } from "@/lib/mongodb";
-import Expense from "@/models/Expense";
+import { NextRequest } from "next/server";
+import { failFrom, ok } from "@/server/shared/http";
+import { parseWith } from "@/server/shared/validate";
+import { updateExpenseSchema } from "@/server/features/expenses/schema";
+import { expensesService } from "@/server/features/expenses/service";
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: { id: string } },
 ) {
   try {
-    await connectToDatabase();
-    const expense = await Expense.findById(params.id);
-    if (!expense) {
-      return NextResponse.json({ error: "Despesa não encontrada" }, { status: 404 });
-    }
-    return NextResponse.json({ expense });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const expense = await expensesService.getById(params.id);
+    return ok({ expense });
+  } catch (error) {
+    return failFrom(error, 500);
   }
 }
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: { id: string } },
 ) {
   try {
-    await connectToDatabase();
-    const body = await request.json();
-
-    const expense = await Expense.findByIdAndUpdate(
-      params.id,
-      {
-        name: body.name,
-        amount: body.amount,
-        category: body.category,
-        frequency: body.frequency,
-        dueDay: body.dueDay,
-        dueMonth: body.dueMonth,
-        active: body.active,
-        reminderDays: body.reminderDays,
-        chatId: body.chatId || undefined,
-      },
-      { new: true, runValidators: true }
-    );
-
-    if (!expense) {
-      return NextResponse.json({ error: "Despesa não encontrada" }, { status: 404 });
-    }
-
-    return NextResponse.json({ expense });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    const body = parseWith(updateExpenseSchema, await request.json());
+    const expense = await expensesService.update(params.id, body);
+    return ok({ expense });
+  } catch (error) {
+    return failFrom(error, 400);
   }
 }
 
 export async function DELETE(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: { id: string } },
 ) {
   try {
-    await connectToDatabase();
-    const expense = await Expense.findByIdAndDelete(params.id);
-    if (!expense) {
-      return NextResponse.json({ error: "Despesa não encontrada" }, { status: 404 });
-    }
-    return NextResponse.json({ ok: true });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    await expensesService.remove(params.id);
+    return ok({ ok: true });
+  } catch (error) {
+    return failFrom(error, 500);
   }
 }

@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
 import { Space_Grotesk, Source_Sans_3, JetBrains_Mono } from "next/font/google";
+import { Toaster } from "sonner";
+import { ThemeProvider } from "@/components/atoms/theme-provider";
+import { AppShell } from "@/components/templates/app-shell";
 import "./globals.css";
 
 const display = Space_Grotesk({
@@ -29,9 +32,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="pt-BR">
-      <body className={`${display.variable} ${body.variable} ${mono.variable} font-body bg-paper text-ink`}>
-        {children}
+    <html lang="pt-BR" suppressHydrationWarning>
+      <body className={`${display.variable} ${body.variable} ${mono.variable} font-body bg-background text-foreground`}>
+        <ThemeProvider>
+          <AppShell>{children}</AppShell>
+          <Toaster richColors position="top-right" />
+        </ThemeProvider>
       </body>
     </html>
   );

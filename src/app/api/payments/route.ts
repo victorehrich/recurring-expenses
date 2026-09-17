@@ -1,22 +1,28 @@
-import { NextResponse, NextRequest } from "next/server";
-import Payment from "@/models/Payment";
-import Expense from "@/models/Expense";
-import { connectToDatabase } from "@/lib/mongodb";
-import { getNextOccurrence } from "@/lib/dueDate";
+import { NextRequest } from "next/server";
+import { created, failFrom, ok } from "@/server/shared/http";
+import { parseWith, parseJsonWith } from "@/server/shared/validate";
+import {
+  listPaymentsQuerySchema,
+  registerPaymentSchema,
+} from "@/server/features/payments/schema";
+import { paymentsService } from "@/server/features/payments/service";
 
 /**
- * GET /api/payments?expenseId=xxxxx
- * Returns the payment history for the given expense.
+ * GET /api/payments?expenseId?&from?&to?&includeRemoved?
+ * Histórico global (filtros opcionais). Por padrão exclui pagamentos
+ * de despesas removidas; `includeRemoved=true` mostra tudo.
  */
 export async function GET(request: NextRequest) {
-  const expenseId = request.nextUrl.searchParams.get("expenseId");
-  if (!expenseId) {
-    return NextResponse.json({ error: "expenseId is required" }, { status: 400 });
+  try {
+    const query = parseWith(
+      listPaymentsQuerySchema,
+      Object.fromEntries(request.nextUrl.searchParams),
+    );
+    const result = await paymentsService.list(query);
+    return ok(result);
+  } catch (error) {
+    return failFrom(error, 400);
   }
-
-  await connectToDatabase();
-  const payments = await Payment.find({ expenseId }).sort({ paidAt: -1 }).lean();
-  return NextResponse.json({ payments });
 }
 
 /**
@@ -25,39 +31,11 @@ export async function GET(request: NextRequest) {
  * Registers a payment for the current period of the expense.
  */
 export async function POST(request: NextRequest) {
-  const { expenseId, paidAt, amount, method, notes } = await request.json();
-  if (!expenseId) {
-    return NextResponse.json({ error: "expenseId is required" }, { status: 400 });
+  try {
+    const body = await parseJsonWith(request, registerPaymentSchema);
+    const payment = await paymentsService.register(body);
+    return created({ payment });
+  } catch (error) {
+    return failFrom(error, 400);
   }
-
-  await connectToDatabase();
-  const expense = await Expense.findById(expenseId);
-  if (!expense) {
-    return NextResponse.json({ error: "Despesa não encontrada" }, { status: 404 });
-  }
-
-  const paymentDate = paidAt ? new Date(paidAt) : new Date();
-  const { periodKey } = getNextOccurrence(expense, paymentDate);
-
-  // avoid duplicate payment for the same period
-  const exists = await Payment.findOne({ expenseId, periodKey });
-  if (exists) {
-    return NextResponse.json({ error: "Pagamento já registrado para este período" }, { status: 400 });
-  }
-
-  const payment = await Payment.create({
-    expenseId,
-    paidAt: paymentDate,
-    periodKey,
-    amount: amount ?? expense.amount,
-    method,
-    notes,
-    confirmed: true,
-  });
-
-  // Mark expense as having payment for this period to avoid future notifications/status
-  expense.lastNotifiedKey = periodKey;
-  await expense.save();
-
-  return NextResponse.json({ payment }, { status: 201 });
 }

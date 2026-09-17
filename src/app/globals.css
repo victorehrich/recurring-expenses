@@ -4,6 +4,34 @@
 
 :root {
   color-scheme: light;
+  /* Light — claro limpo com acento petrol */
+  --bg: 239 242 237;
+  --surface: 255 255 255;
+  --surface-2: 241 245 240;
+  --border: 211 217 207;
+  --text: 22 26 30;
+  --muted: 100 116 110;
+  --brand: 31 95 91;
+  --brand-contrast: 239 242 237;
+  --success: 34 128 92;
+  --warning: 201 138 44;
+  --danger: 166 67 43;
+}
+
+.dark {
+  color-scheme: dark;
+  /* Dark moderno — slate/zinc profundo, acento teal */
+  --bg: 9 12 16;
+  --surface: 17 23 29;
+  --surface-2: 24 32 40;
+  --border: 38 50 60;
+  --text: 235 240 243;
+  --muted: 148 163 175;
+  --brand: 45 212 191;
+  --brand-contrast: 9 12 16;
+  --success: 52 211 153;
+  --warning: 251 191 36;
+  --danger: 248 113 113;
 }
 
 * {
@@ -12,16 +40,58 @@
 
 body {
   min-height: 100vh;
+  background-color: rgb(var(--bg));
+  color: rgb(var(--text));
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease;
 }
 
 ::selection {
-  background: #1F5F5B;
-  color: #EFF2ED;
+  background: rgb(var(--brand));
+  color: rgb(var(--brand-contrast));
 }
 
 input:focus-visible,
 select:focus-visible,
-button:focus-visible {
-  outline: 2px solid #1F5F5B;
+textarea:focus-visible,
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid rgb(var(--brand));
   outline-offset: 2px;
+}
+
+/* Scrollbar sutil nos dois temas */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--border)) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgb(var(--border));
+  border-radius: 8px;
+}
+
+/* Skeleton shimmer */
+@keyframes shimmer {
+  0% {
+    background-position: -400px 0;
+  }
+  100% {
+    background-position: 400px 0;
+  }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgb(var(--surface-2)) 25%,
+    rgb(var(--border) / 0.5) 50%,
+    rgb(var(--surface-2)) 75%
+  );
+  background-size: 800px 100%;
+  animation: shimmer 1.4s infinite linear;
 }

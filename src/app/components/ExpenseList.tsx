@@ -1,36 +1,35 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { CircleDollarSign, History, Pencil, Trash2 } from "lucide-react";
 import { ExpenseInput } from "./ExpenseForm";
-import { getNextOccurrence, daysBetween } from "@/lib/dueDate";
-import PaymentHistory from "./PaymentHistory";
-import PaymentModal from "./PaymentModal";
-import { EditButton } from "./buttons/edit-button";
-import { DeleteButton } from "./buttons/delete-button";
-import { HistoryButton } from "./buttons/history-button";
-import { RegisterPaymentButton } from "./buttons/register-payment";
+import { Button } from "@/components/atoms";
+import { EmptyState, Menu, StatusPill } from "@/components/molecules";
+import { PaymentDialog, PaymentHistoryPanel } from "@/components/organisms";
+import { getDueInfo, getExpenseStatus } from "@/lib/expense-status";
+import { formatBRL } from "@/lib/format";
 
-const currency = new Intl.NumberFormat("pt-BR", {
-  style: "currency",
-  currency: "BRL",
-});
+type Expense = ExpenseInput & { _id: string; lastNotifiedKey?: string };
 
-function statusFor(expense: ExpenseInput & { lastNotifiedKey?: string }) {
-  const { nextDue, periodKey } = getNextOccurrence(expense as any);
-  const days = daysBetween(nextDue, new Date());
+type GroupKey = "overdue" | "upcoming" | "ontrack" | "paid" | "paused";
 
-  if (expense.lastNotifiedKey && expense.lastNotifiedKey === periodKey) {
-    return { label: "PAGO", tone: "text-green border-green" };
-  }
+const GROUPS: { key: GroupKey; label: string }[] = [
+  { key: "overdue", label: "Atrasadas" },
+  { key: "upcoming", label: "A vencer" },
+  { key: "ontrack", label: "Em dia" },
+  { key: "paid", label: "Pagas" },
+  { key: "paused", label: "Pausadas" },
+];
 
-  if (days < 0) return { label: "ATRASADA", tone: "text-rust border-rust" };
-  if (days === 0) return { label: "VENCE HOJE", tone: "text-rust border-rust" };
-  if (days <= expense.reminderDays)
-    return {
-      label: `EM ${days} DIA${days > 1 ? "S" : ""}`,
-      tone: "text-mustard border-mustard",
-    };
-  return { label: "EM DIA", tone: "text-petrol border-petrol" };
+const PAGE_SIZE = 15;
+
+function groupOf(expense: Expense): GroupKey {
+  if (!expense.active) return "paused";
+  const { days, paid } = getDueInfo(expense);
+  if (paid) return "paid";
+  if (days < 0) return "overdue";
+  if (days <= expense.reminderDays) return "upcoming";
+  return "ontrack";
 }
 
 export default function ExpenseList({
@@ -38,16 +37,30 @@ export default function ExpenseList({
   onEdit,
   onChanged,
 }: Readonly<{
-  expenses: (ExpenseInput & { _id: string; lastNotifiedKey?: string })[];
-  onEdit: (expense: ExpenseInput & { _id: string }) => void;
+  expenses: Expense[];
+  onEdit: (expense: Expense) => void;
   onChanged: () => void;
 }>) {
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [selectedExpense, setSelectedExpense] = useState<
-    (ExpenseInput & { _id: string }) | null
-  >(null);
+  const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [expenses]);
+
+  const ordered = useMemo(() => {
+    const rank: Record<GroupKey, number> = {
+      overdue: 0,
+      upcoming: 1,
+      ontrack: 2,
+      paid: 3,
+      paused: 4,
+    };
+    return [...expenses].sort((a, b) => rank[groupOf(a)] - rank[groupOf(b)]);
+  }, [expenses]);
 
   async function remove(id: string) {
     if (!confirm("Excluir esta despesa recorrente?")) return;
@@ -62,74 +75,126 @@ export default function ExpenseList({
 
   if (expenses.length === 0) {
     return (
-      <div className="border border-dashed border-line p-8 text-center text-ink/60 text-sm">
-        Nenhuma despesa cadastrada ainda. Adicione a primeira acima.
-      </div>
+      <EmptyState
+        title="Nenhuma despesa cadastrada ainda."
+        description="Adicione a primeira acima."
+      />
     );
   }
 
+  const visible = ordered.slice(0, visibleCount);
+
+  const sections = useMemo(() => {
+    const map = new Map<GroupKey, Expense[]>();
+    for (const expense of visible) {
+      const group = groupOf(expense);
+      if (!map.has(group)) map.set(group, []);
+      map.get(group)!.push(expense);
+    }
+    return GROUPS.filter((g) => map.has(g.key)).map((g) => ({
+      ...g,
+      items: map.get(g.key)!,
+    }));
+  }, [ordered, visibleCount]);
+
   return (
-    <div className="border border-line divide-y divide-dashed divide-line bg-white/40">
-      {expenses.map((expense) => {
-        const status = statusFor(expense);
-        const busy = busyId === expense._id;
-        return (
+    <div className="overflow-hidden rounded-2xl border border-border bg-surface">
+      {sections.map((section, si) => (
+        <div key={section.key}>
           <div
-            key={expense._id}
-            className="flex flex-wrap items-center gap-x-6 gap-y-2 px-5 py-4"
+            className={
+              "border-b border-border bg-surface2 px-4 py-1.5 text-[11px] font-medium uppercase tracking-wider text-muted" +
+              (si > 0 ? " border-t" : "")
+            }
           >
-            <div className="min-w-[10rem] flex-1">
-              <p className="font-display font-medium">{expense.name}</p>
-              <p className="text-xs text-ink/60 uppercase tracking-wide">
-                {expense.category} · {expense.frequency}
-              </p>
-            </div>
-
-            <p className="font-mono text-sm w-28 text-right">
-              {currency.format(expense.amount)}
-            </p>
-
-            <span
-              className={`shrink-0 border px-2 py-1 text-[11px] tracking-wider font-mono -rotate-2 ${status.tone}`}
-            >
-              {status.label}
-            </span>
-
-            {!expense.active && (
-              <span className="shrink-0 text-[11px] text-ink/40 uppercase tracking-wide">
-                pausada
-              </span>
-            )}
-
-            <div className="flex gap-3 ml-auto text-xs">
-              <EditButton onEdit={() => onEdit(expense)} />
-              <DeleteButton onDelete={() => remove(expense._id)} busy={busy} />
-              <HistoryButton
-                onHistory={() => {
-                  setSelectedExpense(expense);
-                  setShowHistory(true);
-                }}
-              />
-              <RegisterPaymentButton
-                onRegisterPayment={() => {
-                  setSelectedExpense(expense);
-                  setShowModal(true);
-                }}
-              />
-            </div>
+            {section.label}
           </div>
-        );
-      })}
+          <div className="divide-y divide-border">
+            {section.items.map((expense) => {
+              const status = getExpenseStatus(expense);
+              const busy = busyId === expense._id;
+
+              return (
+                <div
+                  key={expense._id}
+                  className="flex items-center gap-3 px-4 py-2.5"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium leading-tight">{expense.name}</p>
+                    <p className="truncate text-xs text-muted">
+                      {expense.category} · {expense.frequency} · {formatBRL(expense.amount)}
+                    </p>
+                  </div>
+
+                  <StatusPill status={status} />
+
+                  <Menu
+                    label={`Ações de ${expense.name}`}
+                    disabled={busy}
+                    items={[
+                      {
+                        label: "Editar",
+                        icon: Pencil,
+                        onSelect: () => onEdit(expense),
+                      },
+                      {
+                        label: "Registrar pagamento",
+                        icon: CircleDollarSign,
+                        onSelect: () => {
+                          setSelectedExpense(expense);
+                          setShowModal(true);
+                        },
+                      },
+                      {
+                        label: "Histórico",
+                        icon: History,
+                        onSelect: () => {
+                          setSelectedExpense(expense);
+                          setShowHistory(true);
+                        },
+                      },
+                      {
+                        label: busy ? "Excluindo..." : "Excluir",
+                        icon: Trash2,
+                        danger: true,
+                        onSelect: () => remove(expense._id),
+                      },
+                    ]}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+
+      {ordered.length > visibleCount && (
+        <div className="flex items-center justify-between px-4 py-3 text-sm text-muted">
+          <span>
+            Mostrando {visible.length} de {ordered.length}
+          </span>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
+          >
+            Mostrar mais
+          </Button>
+        </div>
+      )}
+
       {showHistory && selectedExpense && (
-        <PaymentHistory
+        <PaymentHistoryPanel
           expenseId={selectedExpense._id}
+          expenseName={selectedExpense.name}
           onClose={() => setShowHistory(false)}
         />
       )}
       {showModal && selectedExpense && (
-        <PaymentModal
+        <PaymentDialog
           expense={selectedExpense}
           onClose={() => setShowModal(false)}
+          onRegistered={onChanged}
         />
       )}
     </div>
