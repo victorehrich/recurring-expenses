@@ -6,6 +6,10 @@ do vencimento.
 
 ## Funcionalidades
 
+- Dashboard geral com KPIs, filtro por período, pagamentos confirmados e próximos vencimentos
+- Página de despesas com busca, filtros, grupos por status e paginação
+- Página de notificações programadas (prévia sem envio, 7/15/30 dias)
+- Histórico global de pagamentos com filtro por período (opção de incluir despesas removidas)
 - Cadastro, edição e exclusão de despesas recorrentes
 - Frequência mensal, semanal ou anual, com dia (e mês) de vencimento
 - Aviso configurável por despesa (ex.: "avisar 3 dias antes")
@@ -13,6 +17,7 @@ do vencimento.
 - Rota `/api/notify` pronta para ser chamada por um cron diário (Vercel Cron
   incluso em `vercel.json`, mas funciona com qualquer cron externo)
 - Não notifica duas vezes o mesmo vencimento
+- Tema escuro moderno + claro, com toggle na navbar e sidebar colapsável
 
 ## 1. Pré-requisitos
 
@@ -57,10 +62,10 @@ Acesse `http://localhost:3000`.
 
 ## 4. Testando as notificações
 
-Na própria interface há um botão **"Testar notificações agora"**, que chama
-`/api/notify` manualmente e mostra o resultado. Ele envia um aviso para toda
-despesa ativa cujo vencimento seja hoje ou esteja dentro do prazo de aviso
-configurado.
+Na dashboard há um botão de sino (**"Testar notificações agora"**), que chama
+`/api/notify` manualmente. Ele envia um aviso para toda despesa ativa cujo
+vencimento seja hoje ou esteja dentro do prazo de aviso configurado. A página
+`/notifications` mostra a prévia do que seria avisado (sem enviar).
 
 Você também pode chamar direto:
 
@@ -135,28 +140,78 @@ https://seu-dominio.com/api/notify?token=SEU_CRON_SECRET
 Dockerfile                  → build multi-stage da aplicação (produção)
 docker-compose.yml          → app + MongoDB + cron diário (Ofelia)
 vercel.json                 → cron diário, caso prefira hospedar na Vercel
+docs/revamp-plan.md         → histórico da repaginação (atomic + slices + redesign)
 src/
   app/
-    page.tsx                  → tela principal (lista + formulário)
-    components/
-      ExpenseForm.tsx         → formulário de criação/edição
-      ExpenseList.tsx         → listagem estilo "livro-caixa"
+    page.tsx                  → / overview (server fino + DashboardClient)
+    expenses/page.tsx         → /expenses gestão completa
+    notifications/page.tsx    → /notifications prévia de avisos
+    payments/page.tsx         → /payments histórico global
+    layout.tsx                → fonts + ThemeProvider + AppShell
+    loading.tsx / error.tsx   → estados globais
     api/
-      expenses/route.ts       → GET (listar) / POST (criar)
-      expenses/[id]/route.ts  → GET / PUT / DELETE de uma despesa
-      notify/route.ts         → verifica vencimentos e envia Telegram
-  lib/
-    mongodb.ts                → conexão com o MongoDB (com cache)
-    telegram.ts                → envio de mensagens via Bot API
-    dueDate.ts                → cálculo de próximo vencimento
-  models/
-    Expense.ts                → schema Mongoose
+      expenses/route.ts       → GET (listar) / POST (criar) — thin
+      expenses/[id]/route.ts  → GET / PUT / DELETE — thin
+      payments/route.ts       → GET (filtros) / POST (registrar) — thin
+      payments/confirm/route.ts → POST confirmar — thin
+      notify/route.ts         → cron: verifica e envia Telegram — thin
+      notifications/scheduled/route.ts → GET prévia dry-run — thin
+  components/
+    atoms/        Button, Input, Textarea, Checkbox, Badge, Card,
+                  Skeleton/Spinner, ThemeToggle, ThemeProvider
+    molecules/    FormField, StatusPill, StatCard, SearchBar, EmptyState,
+                  Menu, CustomSelect, Calendar, DatePicker, DateRangePicker
+    organisms/    Sidebar/MobileNav/Navbar, PageHeader, AppHeader,
+                  Dialog/ExpenseDialog, NotifyBanner, ExpenseForm/ExpenseList
+                  (em app/components), ExpensesManager,
+                  PaymentDialog/PaymentHistoryPanel
+    templates/    AppShell, DashboardTemplate,
+                  Dashboard/Expenses/Notifications/Payments clients
+  hooks/          useExpenses, useNotify, useExpenseFilters,
+                  usePayments, useExpenseDialog
+  lib/            cn, format, period, dueDate, expense-status,
+                  mongodb, telegram
+  server/         vertical slices da API
+    shared/       db, http, auth, errors, validate
+    features/
+      expenses/       schema (zod) + repository + service + types
+      payments/       schema + repository + service + types
+      notifications/  schema + service (checkAndNotify + previewScheduled)
+                      + templates + telegram
+  models/         Expense.ts, Payment.ts (Mongoose)
 ```
 
-## 7. Personalizações fáceis
+Regras da arquitetura:
 
-- **Mudar o texto da mensagem**: edite `src/app/api/notify/route.ts`
-- **Notificar em vários chats por despesa**: hoje há um campo opcional
-  `chatId` por despesa que sobrepõe o padrão — dá para estender para uma lista
+- `app/api/*` tem < 25 linhas por handler: auth → validate → service → response.
+- Cada slice em `server/features/*` é dono de schema + repository + service.
+- Atoms sem regra de negócio; molecules compõem atoms; organisms usam hooks;
+  templates só layout/slots; pages só composição.
+- Client nunca importa `@/server` nem `@/models` (tipos locais nos components).
+
+## 7. API (contratos)
+
+```
+GET    /api/expenses                        → { expenses }
+POST   /api/expenses                        → { expense } 201
+GET    /api/expenses/:id                    → { expense }
+PUT    /api/expenses/:id                    → { expense }
+DELETE /api/expenses/:id                    → { ok: true }
+GET    /api/payments?expenseId?&from?&to?&includeRemoved?
+                                            → { payments, removedCount }
+POST   /api/payments                        → { payment } 201
+POST   /api/payments/confirm                → { payment }
+GET    /api/notify?token=                   → { checked, notified, errors }
+GET    /api/notifications/scheduled?days=   → { scheduled, days }
+```
+
+Por padrão, `GET /api/payments` exclui pagamentos de despesas removidas;
+`includeRemoved=true` mostra tudo.
+
+## 8. Personalizações fáceis
+
+- **Mudar o texto da mensagem**: edite `src/server/features/notifications/templates.ts`
 - **Mudar o horário do cron**: edite o campo `schedule` em `vercel.json`
   (formato cron padrão, em UTC)
+- **Navegação da sidebar**: edite `NAV_ITEMS` em `src/components/organisms/sidebar.tsx`
+- **Versão exibida**: vem do `package.json` via `NEXT_PUBLIC_APP_VERSION`

@@ -1,6 +1,8 @@
-import { NextResponse, NextRequest } from "next/server";
-import Payment from "@/models/Payment";
-import { connectToDatabase } from "@/lib/mongodb";
+import { NextRequest } from "next/server";
+import { failFrom, ok } from "@/server/shared/http";
+import { parseJsonWith } from "@/server/shared/validate";
+import { confirmPaymentSchema } from "@/server/features/payments/schema";
+import { paymentsService } from "@/server/features/payments/service";
 
 /**
  * POST /api/payments/confirm
@@ -8,20 +10,11 @@ import { connectToDatabase } from "@/lib/mongodb";
  * Marks a payment as confirmed (for old payments) and optionally overrides the date.
  */
 export async function POST(request: NextRequest) {
-  const { paymentId, confirmDate } = await request.json();
-  if (!paymentId) {
-    return NextResponse.json({ error: "paymentId is required" }, { status: 400 });
+  try {
+    const body = await parseJsonWith(request, confirmPaymentSchema);
+    const payment = await paymentsService.confirm(body);
+    return ok({ payment });
+  } catch (error) {
+    return failFrom(error, 400);
   }
-
-  await connectToDatabase();
-  const payment = await Payment.findById(paymentId);
-  if (!payment) {
-    return NextResponse.json({ error: "Pagamento não encontrado" }, { status: 404 });
-  }
-
-  payment.confirmed = true;
-  if (confirmDate) payment.paidAt = new Date(confirmDate);
-  await payment.save();
-
-  return NextResponse.json({ payment });
 }

@@ -1,38 +1,24 @@
-import { NextRequest, NextResponse } from "next/server";
-import { connectToDatabase } from "@/lib/mongodb";
-import Expense from "@/models/Expense";
+import { NextRequest } from "next/server";
+import { created, failFrom, ok } from "@/server/shared/http";
+import { parseJsonWith } from "@/server/shared/validate";
+import { createExpenseSchema } from "@/server/features/expenses/schema";
+import { expensesService } from "@/server/features/expenses/service";
 
 export async function GET() {
   try {
-    await connectToDatabase();
-    const expenses = await Expense.find().sort({ createdAt: -1 }).lean();
-    return NextResponse.json({ expenses });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const expenses = await expensesService.list();
+    return ok({ expenses });
+  } catch (error) {
+    return failFrom(error, 500);
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    await connectToDatabase();
-    const body = await request.json();
-
-    const expense = await Expense.create({
-      name: body.name,
-      amount: body.amount,
-      category: body.category || "Geral",
-      frequency: body.frequency || "mensal",
-      dueDay: body.dueDay,
-      dueMonth: body.dueMonth,
-      active: body.active ?? true,
-      reminderDays: body.reminderDays ?? Number(process.env.DIAS_DE_AVISO ?? 3),
-      chatId: body.chatId || undefined,
-      boletoUrl: body.boletoUrl || undefined,
-      observation: body.observation || undefined,
-    });
-
-    return NextResponse.json({ expense }, { status: 201 });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    const body = await parseJsonWith(request, createExpenseSchema);
+    const expense = await expensesService.create(body);
+    return created({ expense });
+  } catch (error) {
+    return failFrom(error, 400);
   }
 }
