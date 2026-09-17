@@ -203,10 +203,24 @@ POST   /api/payments                        → { payment } 201
 POST   /api/payments/confirm                → { payment }
 GET    /api/notify?token=                   → { checked, notified, errors }
 GET    /api/notifications/scheduled?days=   → { scheduled, days }
+POST   /api/notifications/test              → { checked, notified, errors }
 ```
 
 Por padrão, `GET /api/payments` exclui pagamentos de despesas removidas;
 `includeRemoved=true` mostra tudo.
+
+## 8. Troubleshooting notificações
+
+- **Botão "Testar agora" dava 401**: corrigido — ele usa `POST /api/notifications/test`
+  (mesma origem + cooldown de 60s), sem expor o `CRON_SECRET` no browser.
+- **Logs**: toda request da API loga uma linha
+  (`→ GET /api/expenses 200 12ms`, com `?token=` mascarado) e os fluxos de
+  notificação detalham em `[notify]`/`[notify-test]` — veja com
+  `docker compose logs app`. Cores desligam com `NO_COLOR=1`; verbosidade
+  via `LOG_LEVEL=debug|info|warn|error` (padrão `info`).
+- **Cron Ofelia**: `docker compose logs cron` mostra cada disparo (o `curl -fsS`
+  falha visivelmente em 401). Confira que o `CRON_SECRET` do `.env` no servidor
+  é o mesmo esperado; evite `& ? #` no valor (quebram a query string).
 
 ## 8. Personalizações fáceis
 

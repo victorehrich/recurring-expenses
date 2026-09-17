@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { created, failFrom, ok } from "@/server/shared/http";
+import { withLogging } from "@/server/shared/withLogging";
 import { parseWith, parseJsonWith } from "@/server/shared/validate";
 import {
   listPaymentsQuerySchema,
@@ -12,7 +13,7 @@ import { paymentsService } from "@/server/features/payments/service";
  * Histórico global (filtros opcionais). Por padrão exclui pagamentos
  * de despesas removidas; `includeRemoved=true` mostra tudo.
  */
-export async function GET(request: NextRequest) {
+export const GET = withLogging("GET /api/payments", async (request: NextRequest) => {
   try {
     const query = parseWith(
       listPaymentsQuerySchema,
@@ -23,14 +24,14 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     return failFrom(error, 400);
   }
-}
+});
 
 /**
  * POST /api/payments
  * Body: { expenseId, paidAt?, amount?, method?, notes? }
  * Registers a payment for the current period of the expense.
  */
-export async function POST(request: NextRequest) {
+export const POST = withLogging("POST /api/payments", async (request: NextRequest) => {
   try {
     const body = await parseJsonWith(request, registerPaymentSchema);
     const payment = await paymentsService.register(body);
@@ -38,4 +39,4 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     return failFrom(error, 400);
   }
-}
+});

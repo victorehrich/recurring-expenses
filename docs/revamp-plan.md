@@ -197,6 +197,15 @@ Regras:
 
 ### F11 — Polish (era F6) [CONCLUÍDA em 2026-09-16 — código]
 
+### Hotfix pós-v1.1.0 — 401 no botão testar + logs (2026-09-17, não commitado)
+
+- Causa: botão "Testar agora" chamava `GET /api/notify` sem token → 401 sempre que `CRON_SECRET` configurado.
+- Fix: novo `POST /api/notifications/test` (same-origin via Origin/Referer + cooldown 60s em memória, sem segredo no browser); `useNotify` migrado; `/api/notify` segue exclusivo do cron.
+- Logs: `server/shared/logger.ts` (`[ISO] [scope] msg`); `notify` loga unauthorized (via/secretConfigured), start/done (checked/notified/errors) e falha de envio por despesa; `notify-test` loga bloqueios, start e done. Sem segredos nos logs.
+- Smoke: 401 sem token, 401 cross-origin, 429 no replay, 200 same-origin (500 aqui por Mongo local inalcançável — caminho validado).
+- Troubleshoot cron no servidor: ver `docker compose logs cron` (curl `-fsS` falha em 401) e `docker compose logs app | grep notify`; `CRON_SECRET` com `& ? #` quebra a URL do Ofelia — usar valor alfanumérico.
+- Logs visuais (pós-hotfix, não commitado): `server/shared/logger.ts` com cores ANSI (método/status/duração, `token=***`, `NO_COLOR`/`LOG_LEVEL`); `withLogging` envolve os 7 handlers (uma linha por request + ERR em exceção); front com `lib/debug.ts` (só em `npm run dev`) nos hooks `useExpenses/usePayments/useNotify`.
+
 - [x] Auditoria: zero `<select>` nativo / `type="date"` / tokens legados em `src`; todos os botões icon-only com `aria-label` (fix no sino do `AppHeader`); rotas com `metadata`; labels em todos os inputs; dialogs com ESC/focus.
 - [x] `tsconfig.tsbuildinfo` no `.gitignore`; versão bump `1.0.0` → `1.1.0` (refletida na sidebar via `NEXT_PUBLIC_APP_VERSION`).
 - [x] Reorganização do `ExpenseForm` (pós-QA, a pedido): seções Dados básicos / Vencimento e aviso / Opções avançadas (colapsado), frequência em segmented control, sem card duplo no dialog.

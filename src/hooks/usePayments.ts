@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { debugError, debugLog } from "@/lib/debug";
 
 export type PaymentRow = {
   _id: string;
@@ -36,8 +37,11 @@ export function usePayments(from?: Date, to?: Date, expenseId?: string, includeR
       if (!res.ok) throw new Error(data.error || "Não foi possível carregar");
       setPayments(data.payments ?? []);
       setRemovedCount(data.removedCount ?? 0);
+      debugLog("payments", `loaded ${data.payments?.length ?? 0} (removed hidden: ${data.removedCount ?? 0})`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro ao carregar pagamentos");
+      const message = err instanceof Error ? err.message : "Erro ao carregar pagamentos";
+      setError(message);
+      debugError("payments", "load failed", message);
     } finally {
       setLoading(false);
     }

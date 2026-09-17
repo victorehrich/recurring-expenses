@@ -1,4 +1,5 @@
 import { connectToDatabase } from "@/server/shared/db";
+import { logger } from "@/server/shared/logger";
 import Expense from "@/models/Expense";
 import Payment from "@/models/Payment";
 import { getNextOccurrence, daysBetween } from "@/lib/dueDate";
@@ -93,11 +94,11 @@ export async function checkAndNotify(today = new Date()): Promise<NotifyResult> 
       expense.lastNotifiedKey = periodKey;
       await expense.save();
       notified.push(expense.name);
+      logger.info("notify", `sent name="${expense.name}" daysUntil=${daysUntil}`);
     } catch (err: unknown) {
-      errors.push({
-        name: expense.name,
-        error: err instanceof Error ? err.message : "erro desconhecido",
-      });
+      const message = err instanceof Error ? err.message : "erro desconhecido";
+      errors.push({ name: expense.name, error: message });
+      logger.error("notify", `telegram failed name="${expense.name}"`, message);
     }
   }
 
